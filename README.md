@@ -32,7 +32,7 @@ Keep `/data` on persistent storage. Existing `chat.db` from the earlier bot is n
 ## Translation setup
 - Enable Cloud Translation API in Google Cloud Console.
 - Create an API key restricted to the Cloud Translation API.
-- Set `TRANSLATE_ENABLED=true` and `GOOGLE_TRANSLATE_API_KEY=...`.
+- Translation is enabled by default. With no key, the bot uses Google’s unofficial web translation endpoint (no key required; best-effort and may be throttled or changed). If `GOOGLE_TRANSLATE_API_KEY` is set, it uses the official Cloud Translation v2 API instead. Set `TRANSLATE_ENABLED=false` to disable translation.
 - The `/translation on|off` command toggles translation at runtime. A key must be configured first.
 
 ## Commands

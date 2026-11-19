@@ -19,7 +19,7 @@ class Settings:
     gemini_keys: tuple = tuple(_keys())
     data_dir: str = os.getenv("DATA_DIR", "/data")
     log_level: str = os.getenv("LOG_LEVEL", "INFO").upper()
-    translate_enabled: bool = os.getenv("TRANSLATE_ENABLED", "false").lower() == "true"
+    translate_enabled: bool = os.getenv("TRANSLATE_ENABLED", "true").lower() == "true"
     google_translate_api_key: str = os.getenv("GOOGLE_TRANSLATE_API_KEY", "")
     history_turns: int = int(os.getenv("HISTORY_TURNS", "8"))
     max_output_tokens: int = int(os.getenv("MAX_OUTPUT_TOKENS", "900"))
@@ -36,5 +36,3 @@ if settings.owner_id <= 0:
     raise RuntimeError("Set OWNER_ID to your numeric Telegram user ID.")
 if not settings.gemini_keys:
     raise RuntimeError("Set GEMINI_API_KEY or GEMINI_API_KEYS.")
-if settings.translate_enabled and not settings.google_translate_api_key:
-    raise RuntimeError("TRANSLATE_ENABLED=true requires GOOGLE_TRANSLATE_API_KEY.")

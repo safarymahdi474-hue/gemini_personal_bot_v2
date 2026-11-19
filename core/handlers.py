@@ -198,7 +198,7 @@ class BotHandlers:
     async def translation_toggle(self, update, context):
         if not self.allowed(update): return
         if not context.args or context.args[0].lower() not in ("on", "off"):
-            await update.message.reply_text("استفاده: /translation on یا /translation off\nبرای فعال‌سازی، کلید Cloud Translation را در .env قرار بده.")
+            await update.message.reply_text("استفاده: /translation on یا /translation off\nبدون کلید هم از مترجم وب گوگل استفاده می‌شود؛ این روش غیررسمی است و ممکن است گاهی محدود شود.")
             return
         # Runtime preference; global translator must be configured with credentials.
         if context.args[0].lower() == "on" and not self.s.google_translate_api_key:
