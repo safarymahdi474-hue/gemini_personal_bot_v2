@@ -80,11 +80,13 @@ class BotHandlers:
         await update.effective_chat.send_action("typing")
         try:
             # Optional Google translation: Persian -> English before Gemini.
+            # Fast path: send Persian directly to Gemini. Translation is opt-in because
+            # two extra network calls add latency and do not reduce Gemini token usage.
             translation_pref = self.db.get_setting(
                 user_id, "translation", str(self.s.translate_enabled)
             ).lower() == "true"
             self.translator.enabled = translation_pref
-            internal_user = await self.translator.translate(user_text, "fa", "en")
+            internal_user = await self.translator.translate(user_text, "fa", "en") if translation_pref else user_text
             self.db.save_message(user_id, "user", internal_user, mode)
 
             rows = self.db.history(user_id, self.s.history_turns * 2)
@@ -115,7 +117,7 @@ class BotHandlers:
             self.db.record_usage(user_id, model, len(internal_user), len(answer_en))
 
             # Optional English -> Persian display translation.
-            answer_fa = await self.translator.translate(answer_en, "en", "fa")
+            answer_fa = await self.translator.translate(answer_en, "en", "fa") if translation_pref else answer_en
             await self._send_long(update, answer_fa)
             log.info("Completed mode=%s model=%s project=%s", mode, model, project)
         except Exception as exc:
@@ -203,12 +205,9 @@ class BotHandlers:
             await update.message.reply_text("استفاده: /translation on یا /translation off\nبدون کلید هم از مترجم وب گوگل استفاده می‌شود؛ این روش غیررسمی است و ممکن است گاهی محدود شود.")
             return
         # Runtime preference; global translator must be configured with credentials.
-        if context.args[0].lower() == "on" and not self.s.google_translate_api_key:
-            await update.message.reply_text("کلید Google Cloud Translation تنظیم نشده است.")
-            return
         self.translator.enabled = context.args[0].lower() == "on"
         self.db.set_setting(update.effective_user.id, "translation", self.translator.enabled)
-        await update.message.reply_text("ترجمه فعال شد." if self.translator.enabled else "ترجمه غیرفعال شد.")
+        await update.message.reply_text("ترجمه فعال شد (ممکن است کمی کندتر شود)." if self.translator.enabled else "ترجمه غیرفعال شد؛ پاسخ مستقیم Gemini سریع‌تر است.")
 
     async def keys(self, update, context):
         if not self.allowed(update): return
