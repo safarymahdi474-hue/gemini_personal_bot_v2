@@ -55,36 +55,57 @@ class GeminiService:
         candidates = await self._candidates()
         if not candidates:
             raise RuntimeError("All configured Gemini projects are unavailable.")
-        last_exc = None
+
+        # On model-serving 503s, try the configured lightweight model as a
+        # best-effort fallback. This is not a quota bypass; 429 is never rerouted.
+        models = [model]
+        fallback = self.settings.light_model
+        if fallback and fallback != model:
+            models.append(fallback)
+
         config = types.GenerateContentConfig(
             system_instruction=system_instruction,
             max_output_tokens=self.settings.max_output_tokens,
         )
-        for state in candidates:
-            try:
-                response = await state.client.aio.models.generate_content(
-                    model=model, contents=contents, config=config
-                )
-                answer = response.text or ""
-                return answer, state.label
-            except Exception as exc:
-                last_exc = exc
-                status = status_code(exc)
-                if status == 429:
-                    # Respect rate/quota limits: do not switch projects after 429.
-                    state.cooldown_until = time.monotonic() + 60
+        last_exc = None
+        for model_index, candidate_model in enumerate(models):
+            model_had_503 = False
+            for state in candidates:
+                try:
+                    response = await state.client.aio.models.generate_content(
+                        model=candidate_model, contents=contents, config=config
+                    )
+                    answer = response.text or ""
+                    if model_index:
+                        log.warning("Primary model unavailable; fallback model succeeded: %s", candidate_model)
+                    return answer, state.label
+                except Exception as exc:
+                    last_exc = exc
+                    status = status_code(exc)
+                    if status == 429:
+                        state.cooldown_until = time.monotonic() + 60
+                        raise
+                    if status in (401, 403):
+                        state.disabled = True
+                        continue
+                    if status is not None and 500 <= status <= 599:
+                        state.cooldown_until = time.monotonic() + 15
+                        if status == 503:
+                            model_had_503 = True
+                        log.warning("Gemini request failed: model=%s project=%s status=%s", candidate_model, state.label, status)
+                        continue
+                    msg = str(exc).lower()
+                    if status is None and any(x in msg for x in ("timeout", "connection", "network", "transport")):
+                        state.cooldown_until = time.monotonic() + 15
+                        continue
                     raise
-                if status in (401, 403):
-                    state.disabled = True
-                    continue
-                if status is not None and 500 <= status <= 599:
-                    state.cooldown_until = time.monotonic() + 15
-                    continue
-                msg = str(exc).lower()
-                if status is None and any(x in msg for x in ("timeout", "connection", "network", "transport")):
-                    state.cooldown_until = time.monotonic() + 15
-                    continue
-                raise
+            if model_index == 0 and model_had_503 and len(models) > 1:
+                log.warning("All primary-model attempts failed with 503; trying fallback model %s", fallback)
+                # Use the same configured projects for a different model; this
+                # does not create new quota or evade a 429 response.
+                continue
+            if model_index == 0 and not model_had_503:
+                break
         raise last_exc or RuntimeError("No Gemini project available.")
 
     def status(self):
